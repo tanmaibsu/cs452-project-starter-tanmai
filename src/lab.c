@@ -155,9 +155,15 @@ char **cmd_parse(char const *line)
  */
 void cmd_free(char **line)
 {
-    if (line != NULL)
-    {
-        free(line);
+    if(line == NULL) {
+        return;
+    } else {
+        k = 0;
+        while(line[k] != NULL) {
+            free(line[k]);
+        }
+
+        free(line[k]);
     }
 }
 
