@@ -124,7 +124,7 @@ void test_get_prompt_custom(void)
      const char* prmpt = "MY_PROMPT";
      if(setenv(prmpt,"foo>",true)){
           TEST_FAIL();
-     }
+}
 
      char *prompt = get_prompt(prmpt);
      TEST_ASSERT_EQUAL_STRING(prompt, "foo>");

@@ -1,14 +1,17 @@
 /**Update this file with the starter code**/
 #ifndef LAB_H
 #define LAB_H
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
+#include <ctype.h>
 
 #define lab_VERSION_MAJOR 1
-#define lab_VERSION_MAJOR 1
+#define lab_VERSION_MINOR 0
 #define UNUSED(x) (void)x;
 
 #ifdef __cplusplus
@@ -105,7 +108,6 @@ extern "C"
      * @param sh
      */
     void sh_init(struct shell *sh);
-
     /**
      * @brief Destroy shell. Free any allocated memory and resources and exit
      * normally.
@@ -120,6 +122,7 @@ extern "C"
      * @param argc Number of args
      * @param argv The arg array
      */
+
     void parse_args(int argc, char **argv);
 
     #ifdef __cplusplus
