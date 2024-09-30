@@ -9,10 +9,17 @@
 #include <unistd.h>
 #include <signal.h>
 #include <ctype.h>
+#include <sys/wait.h>
 
 #define lab_VERSION_MAJOR 1
 #define lab_VERSION_MINOR 0
 #define UNUSED(x) (void)x;
+
+#define MAX_JOBS 1024
+#define PATH_MAX 4096
+
+// #define MAX_JOBS 1024
+// #define PATH_MAX 4096
 
 #ifdef __cplusplus
 extern "C"
@@ -29,6 +36,24 @@ extern "C"
         char *prompt;
     };
 
+    struct job
+    {
+        int job_id;
+        pid_t pid;
+        char *command;
+        char *status; // "Running" or "Done"
+        int active;   // 1 if the job is active (running), 0 if finished
+    };
+
+
+    void add_job(pid_t pid, const char **argv);
+  
+    void check_jobs();
+
+    void show_jobs();
+
+    void cleanup_jobs();
+
     /**
      * @brief Set the shell prompt. This function will attempt to load a prompt
      * from the requested environment variable, if the environment variable is
@@ -37,7 +62,7 @@ extern "C"
      *
      * @param env The environment variable
      * @return const char* The prompt
-    */
+     */
     char *get_prompt(const char *env);
 
     /**
@@ -53,15 +78,15 @@ extern "C"
     int change_dir(char **dir);
 
     /**
-    * @brief Convert line read from the user into to format that will work with
-    * execvp. We limit the number of arguments to ARG_MAX loaded from sysconf.
-    * This function allocates memory that must be reclaimed with the cmd_free
-    * function.
-    *
-    * @param line The line to process
-    *
-    * @return The line read in a format suitable for exec
-    */
+     * @brief Convert line read from the user into to format that will work with
+     * execvp. We limit the number of arguments to ARG_MAX loaded from sysconf.
+     * This function allocates memory that must be reclaimed with the cmd_free
+     * function.
+     *
+     * @param line The line to process
+     *
+     * @return The line read in a format suitable for exec
+     */
 
     char **cmd_parse(char const *line);
 
@@ -70,7 +95,7 @@ extern "C"
      *
      * @param line the line to free
      */
-    void cmd_free(char ** line);
+    void cmd_free(char **line);
 
     /**
      * @brief Trim the whitespace from the start and end of a string.
@@ -82,7 +107,6 @@ extern "C"
      * @return The new line with no whitespace
      */
     char *trim_white(char *line);
-
 
     /**
      * @brief Takes an argument list and checks if the first argument is a
@@ -125,7 +149,7 @@ extern "C"
 
     void parse_args(int argc, char **argv);
 
-    #ifdef __cplusplus
+#ifdef __cplusplus
 } // extern "C"
 #endif
 

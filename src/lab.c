@@ -1,19 +1,17 @@
+#include "../src/lab.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include <sys/types.h>
-#include <termios.h>
-#include <unistd.h>
+#include <string.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <signal.h>
 #include <ctype.h>
-#include <string.h>
+#include <unistd.h>
+#include <getopt.h>
 #include <pwd.h>
-#include "../src/lab.h"
 #include <errno.h>
+#include <termios.h>
 #include <limits.h>
-
 
 /**
  * @brief Set the shell prompt. This function will attempt to load a prompt
@@ -24,6 +22,69 @@
  * @param env The environment variable
  * @return const char* The prompt
  */
+
+// Structure to store background job information
+
+struct job jobs[MAX_JOBS];
+int n_jobs = 0;
+
+void add_job(pid_t pid, const char **argv)
+{
+    if (n_jobs < MAX_JOBS)
+    {
+        jobs[n_jobs].job_id = n_jobs + 1;
+        jobs[n_jobs].pid = pid;
+        jobs[n_jobs].command = strdup(argv[0]);
+        jobs[n_jobs].status = strdup("Running");
+        jobs[n_jobs].active = 1;
+        printf("[%d] %d %s\n", jobs[n_jobs].job_id, jobs[n_jobs].pid, argv[0]);
+        n_jobs++;
+    }
+}
+
+void check_jobs()
+{
+    printf("jobs checked\n");
+    printf("Number of jobs: %d\n", n_jobs);
+    for (int i = 0; i < n_jobs; i++)
+    {
+        if (jobs[i].active)
+        {
+            int status;
+            printf("pid: %d\n", jobs[i].pid);
+            pid_t result = waitpid(jobs[i].pid, &status, WNOHANG);
+            printf("result: %d\n", result);
+            if (result > 0)
+            { // The process has finished
+                jobs[i].active = 0;
+                jobs[i].status = strdup("Done");
+                free(jobs[i].status);
+            }
+        }
+    }
+}
+
+void show_jobs()
+{
+    for (int i = 0; i < n_jobs; i++)
+    {
+        // printf("[%d] %d %s %s\n", jobs[i].job_id, jobs[i].pid, jobs[i].status, jobs[i].command);
+        if (jobs[i].active || strcmp(jobs[i].status, "Done") == 0)
+        {
+            printf("[%d] %d %s %s\n", jobs[i].job_id, jobs[i].pid, jobs[i].status, jobs[i].command);
+        }
+    }
+}
+
+void cleanup_jobs()
+{
+    for (int i = 0; i < n_jobs; i++)
+    {
+        free(jobs[i].command);
+        free(jobs[i].status);
+    }
+}
+
 char *get_prompt(const char *env)
 {
     char *prompt = NULL;
@@ -43,12 +104,13 @@ char *get_prompt(const char *env)
     }
     else
     {
-        // when env prompts env present
+        // when env prompt presents
         prompt = malloc(strlen(env_prompt) + 1);
 
         if (prompt != NULL)
         {
             strcpy(prompt, env_prompt);
+            // free(env);
         }
     }
 
@@ -68,15 +130,18 @@ char *get_prompt(const char *env)
 int change_dir(char **dir)
 {
     const char *path = NULL;
-
-    printf("dir = %s\n", dir[1]);
+    // if (dir[1] != NULL) {
+    //     path = dir[1];
+    // } else {
+    //     path = getenv("HOME");
+    //     // path = (char *)malloc(strlen(getenv("HOME")) + 1);
+    // }
     if (dir[1] == NULL)
     {
-        // path = getenv("HOME");
+        path = getenv("HOME");
         // printf("path = %s\n", path);
         if (path == NULL)
         {
-            printf("I am in path == NULL\n");
             struct passwd *pw = getpwuid(getuid());
             if (pw == NULL)
             {
@@ -84,24 +149,29 @@ int change_dir(char **dir)
                 return -1;
             }
             path = pw->pw_dir;
-            printf("path = %s\n", path);
         }
-        else
-        {
-            path = dir[1];
-        }
-    } else {
+        // else
+        // {
+        //     path = dir[1];
+        // }
+    }
+    else
+    {
         path = dir[1];
     }
 
     if (chdir(path) == 0)
     {
-        printf("directory changed successfully\n");
+        printf("directory changed successfully.\n");
+        // free(pw);
+        // free(path);
         return 0;
     }
     else
     {
         printf("Error changing directory to '%s': %s\n", path, strerror(errno));
+        // free(pw);
+        // free(path);
         return -1;
     }
 }
@@ -119,32 +189,55 @@ int change_dir(char **dir)
 
 char **cmd_parse(char const *line)
 {
+    if (line == NULL || *line == '\0')
+    {
+        return NULL;
+    }
+
     long arg_max = sysconf(_SC_ARG_MAX);
     if (arg_max == -1)
     {
-        arg_max = 4096;
+        perror("sysconf failed");
+        return NULL;
     }
 
     char **argv = malloc(sizeof(char *) * (arg_max + 1));
-    char *mutable_line = strdup(line);
-
-    char *token = strtok(mutable_line, " \t\n");
-    int i = 0;
-    while (token != NULL && i < arg_max)
+    if (argv == NULL)
     {
-        argv[i] = strdup(token);
-        if (argv[i] == NULL)
+        free(argv);
+        perror("malloc failed");
+        return NULL;
+    }
+
+    char *line_copy = strdup(line);
+    if (line_copy == NULL)
+    {
+        free(argv);
+        perror("strdup failed");
+        return NULL;
+    }
+
+    char *token = strtok(line_copy, " \t\n");
+    int argc = 0;
+
+    while (token != NULL && argc < arg_max)
+    {
+        argv[argc] = strdup(token); // Duplicate token
+        if (argv[argc] == NULL)
         {
             cmd_free(argv);
-            free(mutable_line);
+            free(line_copy);
+            perror("strdup failed");
             return NULL;
         }
+        argc++;
         token = strtok(NULL, " \t\n");
-        i++;
     }
-    argv[i] = NULL;
 
-    free(mutable_line);
+    argv[argc] = NULL;
+
+    free(line_copy);
+
     return argv;
 }
 
@@ -155,15 +248,20 @@ char **cmd_parse(char const *line)
  */
 void cmd_free(char **line)
 {
-    if(line == NULL) {
+    if (line == NULL)
+    {
         return;
-    } else {
-        k = 0;
-        while(line[k] != NULL) {
+    }
+    else
+    {
+        int k = 0;
+        while (line[k] != NULL)
+        {
             free(line[k]);
+            k++;
         }
 
-        free(line[k]);
+        free(line);
     }
 }
 
@@ -208,19 +306,16 @@ char *trim_white(char *line)
  * @param argv The command to check
  * @return True if the command was a built in command
  */
+
 bool do_builtin(struct shell *sh, char **argv)
 {
-    printf("I am here: builtin\n");
-    printf("%s\n", argv[0]);
-
-    if (argv[0] == NULL)
+    if (argv == NULL || argv[0] == NULL)
     {
         return false;
     }
 
     if (strcmp(argv[0], "exit") == 0)
     {
-        printf("I exist\n");
         sh_destroy(sh);
         exit(0);
     }
@@ -244,14 +339,15 @@ bool do_builtin(struct shell *sh, char **argv)
         if (getcwd(cwd, sizeof(cwd)) != NULL)
         {
             printf("%s\n", cwd);
+            return true;
         }
         else
         {
             printf("Error: %s\n", strerror(errno));
-            return 1;
+            return false;
         }
 
-        return 0;
+        return false;
     }
 
     if (strcmp(argv[0], "history") == 0)
@@ -259,13 +355,28 @@ bool do_builtin(struct shell *sh, char **argv)
         // using_history();
         HIST_ENTRY **h_list;
         h_list = history_list();
-        if(h_list) {
+        if (h_list)
+        {
             for (int i = 0; h_list[i]; i++)
             {
                 printf("%d %s\n", i + history_base, h_list[i]->line);
             }
         }
+        else
+        {
+            printf(" No History");
+        }
+        return true;
     }
+
+    if (strcmp(argv[0], "jobs") == 0)
+    {
+        show_jobs();
+        // free(argv);
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -281,6 +392,70 @@ bool do_builtin(struct shell *sh, char **argv)
 
 void sh_init(struct shell *sh)
 {
+    // sh->prompt = get_prompt("MY_PROMPT");
+    // sh->shell_terminal = STDIN_FILENO;
+    // sh->shell_is_interactive = isatty(sh->shell_terminal);
+
+    // if (!sh->shell_is_interactive)
+    // {
+    //     return; // No need for terminal and process group setup if not interactive
+    // }
+
+    // // Wait for the shell to be in its own process group
+    // while (tcgetpgrp(sh->shell_terminal) != (sh->shell_pgid = getpgrp()))
+    // {
+    //     kill(sh->shell_pgid, SIGTTIN);
+    // }
+
+    // // Ignore terminal control signals
+    // signal(SIGINT, SIG_IGN);
+    // signal(SIGQUIT, SIG_IGN);
+    // signal(SIGTSTP, SIG_IGN);
+    // signal(SIGTTIN, SIG_IGN);
+    // signal(SIGTTOU, SIG_IGN);
+
+    // // Set the shell's process group ID to its PID
+    // sh->shell_pgid = getpid();
+    // if (setpgid(sh->shell_pgid, sh->shell_pgid) < 0)
+    // {
+    //     perror("Failed to put the shell in its own process group");
+    //     exit(1);
+    // }
+
+    // // Set the controlling terminal to the shell's process group
+    // if (tcsetpgrp(sh->shell_terminal, sh->shell_pgid) < 0)
+    // {
+    //     perror("Failed to set process group for terminal");
+    //     exit(1);
+    // }
+
+    // // Save the current terminal settings
+    // if (tcgetattr(sh->shell_terminal, &sh->shell_tmodes) < 0)
+    // {
+    //     perror("Failed to get terminal attributes");
+    //     exit(1);
+    // }
+    sh->shell_terminal = STDIN_FILENO;
+    sh->shell_is_interactive = isatty(sh->shell_terminal);
+
+    if (sh->shell_is_interactive)
+    {
+        while (tcgetpgrp(sh->shell_terminal) != (sh->shell_pgid = getpgrp()))
+        {
+            kill(-sh->shell_pgid, SIGTTIN);
+        }
+
+        sh->shell_pgid = getpid();
+        if (setpgid(sh->shell_pgid, sh->shell_pgid) < 0)
+        {
+            perror("Couldn't put the shell in its own process group");
+            exit(1);
+        }
+
+        tcsetpgrp(sh->shell_terminal, sh->shell_pgid);
+        tcgetattr(sh->shell_terminal, &sh->shell_tmodes);
+    }
+
     sh->prompt = get_prompt("MY_PROMPT");
 }
 
@@ -294,21 +469,19 @@ void sh_destroy(struct shell *sh)
 
 void parse_args(int argc, char **argv)
 {
-    int c;
-
-    while ((c = getopt(argc, argv, "v")) != -1)
+    int opt;
+    while ((opt = getopt(argc, argv, "v")) != -1)
     {
-        switch (c)
+        switch (opt)
         {
         case 'v':
-            printf("Shell Version: %d, %d\n", lab_VERSION_MAJOR, lab_VERSION_MINOR);
-            return;
+            printf("Shell version: %d.%d\n", lab_VERSION_MAJOR, lab_VERSION_MINOR);
+            break;
         case '?':
             if (isprint(optopt))
-                fprintf(stderr, "Unknown \n", optopt);
+                fprintf(stderr, "Unknown: '%c'\n", optopt);
             else
-                fprintf(stderr, "Unknown \n", optopt);
-            return;
+                fprintf(stderr, "Unknown: '%c'\n", optopt);
         default:
             abort();
         }
