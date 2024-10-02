@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "../src/lab.h"
-// #include "../src/lab.c"
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <stdbool.h>
@@ -35,7 +34,6 @@ int main(int argc, char **argv)
     {
       printf("line == %s\n", line);
       free(line);
-      // cmd_free(argv);
       continue;
     }
     check_jobs();
@@ -45,21 +43,19 @@ int main(int argc, char **argv)
     bool executed_builtin = do_builtin(&terminal, argv);
     if (executed_builtin)
     {
-      printf("executed_builtin \n");
       cmd_free(argv);
       free(line);
     }
     else
     {
-      printf("create process \n");
       create_process(argv, &terminal, background);
-      printf("done execution");
       cmd_free(argv);
       free(line);
     }
   }
 
   cleanup_jobs();
+
   sh_destroy(&terminal);
 
   return 0;
@@ -68,62 +64,48 @@ int main(int argc, char **argv)
 void create_process(char **argv, struct shell *sh, bool background)
 {
   pid_t pid;
-  int status;
 
-  // Create a child process
   pid = fork();
 
-  if (pid < 0)
+  if (pid == 0)
   {
-    // If fork() fails
-    perror("fork failed");
-    exit(1);
-  }
-  else if (pid == 0)
-  {
+    if (!background)
+    {
+      pid_t child = getpid();
+      setpgid(child, child);
+      tcsetpgrp(sh->shell_terminal, child);
 
-    // if (!background)
-    // {
-    //   // printf("I am in background\n");
+      signal(SIGINT, SIG_DFL);
+      signal(SIGQUIT, SIG_DFL);
+      signal(SIGTSTP, SIG_DFL);
+      signal(SIGTTIN, SIG_DFL);
+      signal(SIGTTOU, SIG_DFL);
+    }
 
-    // }
-    pid_t child = getpid();
-    setpgid(child, child);
-    tcsetpgrp(sh->shell_terminal, child);
-
-    signal(SIGINT, SIG_DFL);
-    signal(SIGQUIT, SIG_DFL);
-    signal(SIGTSTP, SIG_DFL);
-    signal(SIGTTIN, SIG_DFL);
-    signal(SIGTTOU, SIG_DFL);
-    // Execute the command
-    execvp(argv[0], argv);
+    if(execvp(argv[0], argv) == -1) {
+      perror("execvp failed");
+    }
     exit(EXIT_FAILURE);
   }
-  else
+  else if (pid > 0)
   {
     setpgid(pid, pid);
     if (background)
     {
       add_job(pid, argv);
-      printf("job added successfully\n");
     }
     else
     {
+      int status;
       tcsetpgrp(STDIN_FILENO, pid);
       waitpid(pid, &status, WUNTRACED);
       tcsetpgrp(STDIN_FILENO, getpgrp());
     }
-    // Parent process: wait for the child to complete
-
-    // // Check if the child process exited successfully
-    // if (WIFEXITED(status))
-    // {
-    //   return;
-    //   // printf("Child process exited with status %d\n", WEXITSTATUS(status));
-    // }
   }
-  // return;
+  else
+  {
+    perror("fork failed");
+  }
 }
 
 bool check_background(char *line)

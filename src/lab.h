@@ -15,7 +15,7 @@
 #define lab_VERSION_MINOR 0
 #define UNUSED(x) (void)x;
 
-#define MAX_JOBS 1024
+#define MAX_JOBS 4096
 #define PATH_MAX 4096
 
 // #define MAX_JOBS 1024
@@ -41,12 +41,12 @@ extern "C"
         int job_id;
         pid_t pid;
         char *command;
-        char *status; // "Running" or "Done"
-        int active;   // 1 if the job is active (running), 0 if finished
+        int status;
+        int active;
     };
 
 
-    void add_job(pid_t pid, const char **argv);
+    void add_job(pid_t pid, char **argv);
   
     void check_jobs();
 
